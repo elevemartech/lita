@@ -6,6 +6,7 @@ Serve exclusivamente gestores autenticados via JWT do dashboard Eleve.
 
 Endpoints:
   POST /chat/message        → chat conversacional (intent → agente certo)
+  POST /chat/upload         → upload contextual de arquivo + análise pelo Nico
   POST /doc/extract         → extrai dados de documento via GPT-4o Vision
   POST /doc/confirm         → confirma extração e persiste na eleve-api
   POST /report/generate     → gera relatório .xlsx ou .docx
@@ -24,6 +25,7 @@ from routers.chat import router as chat_router
 from routers.doc import router as doc_router
 from routers.report import router as report_router
 from routers.sessions import router as sessions_router
+from routers.upload import router as upload_router
 
 logger = structlog.get_logger(__name__)
 
@@ -52,6 +54,7 @@ app.add_middleware(
 
 app.include_router(sessions_router, prefix="/sessions", tags=["Sessões"])
 app.include_router(chat_router,     prefix="/chat",     tags=["Chat"])
+app.include_router(upload_router,   prefix="/chat",     tags=["Chat"])
 app.include_router(doc_router,      prefix="/doc",      tags=["Documentos"])
 app.include_router(report_router,   prefix="/report",   tags=["Relatórios"])
 
