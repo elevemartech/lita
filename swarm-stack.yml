@@ -1,0 +1,170 @@
+version: "3.9"
+
+# ===================================================================
+# Nicodemus ADM — Docker Swarm Stack (Produção)
+# Copiloto de gestão escolar | FastAPI + LangGraph
+#
+# PRÉ-REQUISITOS:
+#   1. Swarm inicializado: docker swarm init
+#
+#   2. Stack eleveia-api deployada (cria eleveia-shared + EleveMarTech):
+#        source .env && docker stack deploy -c swarm-stack.yml eleveia-api
+#
+#   3. Imagem construída no VPS:
+#        docker build -t nicodemus-adm:latest .
+#
+#   4. 1º deploy:
+#        source .env && docker stack deploy -c swarm-stack.yml nicodemus-adm
+#
+#   5. Update sem downtime:
+#        docker build -t nicodemus-adm:latest . && \
+#        source .env && docker stack deploy -c swarm-stack.yml nicodemus-adm
+#
+# REDES:
+#   nicodemus-net  → overlay interno (app ↔ nico_redis), não exposto
+#   eleveia-shared → external (comunicação com eleve-api via HTTP)
+#   EleveMarTech   → external (Traefik — SSL + routing)
+#
+# BANCO:
+#   Não sobe container de banco.
+#   Aponta para o PostgreSQL do VPS via DATABASE_URL no .env.
+#   Banco nicodemus_db deve existir antes do 1º deploy.
+#
+# MIGRATIONS:
+#   alembic upgrade head corre dentro do command, antes do uvicorn.
+#   Se falhar, o container não sobe — intencionalmente.
+# ===================================================================
+
+services:
+
+  # ──────────────────────────────────────────────────────────────
+  # App — FastAPI + LangGraph + Uvicorn
+  # ──────────────────────────────────────────────────────────────
+  app:
+    image: nicodemus-adm:latest
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn main:app
+               --host 0.0.0.0
+               --port 8001
+               --workers 2
+               --log-level info
+               --access-log"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+      # ── Database (PostgreSQL VPS) ──────────────────────────────
+      - DATABASE_URL=${DATABASE_URL}
+      # ── Redis (interno ao stack) ───────────────────────────────
+      - REDIS_URL=redis://nico_redis:6379/0
+      # ── Eleve API ─────────────────────────────────────────────
+      - ELEVE_API_URL=${ELEVE_API_URL}
+      # ── Auth JWT (mesmo secret do Django) ─────────────────────
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      # ── OpenAI ────────────────────────────────────────────────
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # ── Storage de ficheiros gerados ──────────────────────────
+      - FILE_STORAGE_TTL=${FILE_STORAGE_TTL:-900}
+      - FILE_STORAGE_DIR=${FILE_STORAGE_DIR:-/tmp}
+      # ── CORS ──────────────────────────────────────────────────
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    networks:
+      - nicodemus-net
+      - eleveia-shared
+      - EleveMarTech
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.nicodemus-adm.rule=Host(`lita.elevemartech.com.br`)"
+        - "traefik.http.routers.nicodemus-adm.entrypoints=websecure"
+        - "traefik.http.routers.nicodemus-adm.tls=true"
+        - "traefik.http.routers.nicodemus-adm.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.nicodemus-adm.loadbalancer.server.port=8001"
+      resources:
+        limits:
+          memory: 1g
+        reservations:
+          memory: 256m
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+
+  # ──────────────────────────────────────────────────────────────
+  # Redis — memória conversacional (TTL 24h) + cache FAQ
+  #
+  # Isolado na rede interna nicodemus-net.
+  # NÃO partilha com o api_redis do eleveia-api (broker Celery).
+  # Acessível internamente pelo hostname: nico_redis
+  # ──────────────────────────────────────────────────────────────
+  nico_redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - nico_redis_data:/data
+    networks:
+      - nicodemus-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 320m
+        reservations:
+          memory: 64m
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 10
+        window: 30s
+      placement:
+        constraints:
+          - node.role == manager
+
+# ────────────────────────────────────────────────────────────────
+# Volumes
+# ────────────────────────────────────────────────────────────────
+volumes:
+  nico_redis_data:
+
+# ────────────────────────────────────────────────────────────────
+# Redes
+#   nicodemus-net  → criada aqui, interna (app ↔ redis)
+#   eleveia-shared → external — criada pelo stack eleveia-api
+#                    (deploy eleveia-api ANTES deste stack)
+#   EleveMarTech   → external — criada pelo stack traefik
+# ────────────────────────────────────────────────────────────────
+networks:
+  nicodemus-net:
+    driver: overlay
+    internal: true
+  eleveia-shared:
+    external: true
+  EleveMarTech:
+    external: true
