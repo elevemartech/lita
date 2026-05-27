@@ -54,3 +54,11 @@ class ChatResponse(BaseModel):
 class BriefingResponse(BaseModel):
     session_id: str
     briefing:   str
+
+
+class SummaryResponse(BaseModel):
+    solicitacoes_abertas: int
+    matriculas_pendentes: int
+    inadimplencia_aberta: int
+
+    model_config = {"from_attributes": True}

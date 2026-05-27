@@ -3,6 +3,7 @@ routers/sessions.py — CRUD de sessões conversacionais.
 
 GET    /sessions/                    → lista sessões do gestor autenticado
 POST   /sessions/                    → cria nova sessão
+GET    /sessions/summary/            → indicadores da escola para a SummaryBar
 GET    /sessions/{id}/               → detalhe + últimas 50 mensagens
 POST   /sessions/{id}/briefing/      → gera e persiste briefing diário (idempotente)
 POST   /sessions/{id}/close/         → encerra sessão e gera resumo via LLM
@@ -12,6 +13,7 @@ Todos os endpoints validam que a sessão pertence ao user_id do JWT.
 """
 from __future__ import annotations
 
+import json
 import uuid
 
 import structlog
@@ -33,6 +35,7 @@ from schemas.session_types import (
     MessageResponse,
     SessionDetailResponse,
     SessionResponse,
+    SummaryResponse,
 )
 from services.session_service import SessionService
 
@@ -73,6 +76,38 @@ async def create_session(
     )
     logger.info("sessions.create", user_id=user.user_id, session_id=str(session.id))
     return session
+
+
+@router.get("/summary/", response_model=SummaryResponse)
+async def get_summary(
+    user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Retorna indicadores vivos da escola para a SummaryBar do painel.
+    Reutiliza a tool get_school_summary sem passar pelo LangGraph.
+    Falha em qualquer query individual retorna 0 para esse campo.
+    """
+    import re
+
+    try:
+        summary_json = await get_school_summary.ainvoke({
+            "sa_token":  user.sa_token,
+            "school_id": user.school_id,
+            "user_name": user.name,
+        })
+        raw = json.loads(summary_json).get("summary_data", "")
+    except Exception:
+        raw = ""
+
+    def extract(key: str) -> int:
+        m = re.search(rf"{key}:\s*(\d+)", raw)
+        return int(m.group(1)) if m else 0
+
+    return SummaryResponse(
+        solicitacoes_abertas=extract("solicitacoes_abertas"),
+        matriculas_pendentes=extract("matriculas_pendentes"),
+        inadimplencia_aberta=extract("inadimplencia_aberta"),
+    )
 
 
 @router.get("/{session_id}/", response_model=SessionDetailResponse)
