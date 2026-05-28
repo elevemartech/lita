@@ -48,14 +48,10 @@ services:
   # ──────────────────────────────────────────────────────────────
   app:
     image: nicodemus-adm:latest
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn main:app
-               --host 0.0.0.0
-               --port 8001
-               --workers 2
-               --log-level info
-               --access-log"
+    command:
+      - sh
+      - -c
+      - "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2 --log-level info --access-log"
     ports:
       - "8001:8001"
     environment:
@@ -77,7 +73,6 @@ services:
       - FILE_STORAGE_TTL=${FILE_STORAGE_TTL:-900}
       - FILE_STORAGE_DIR=${FILE_STORAGE_DIR:-/tmp}
       # ── CORS ──────────────────────────────────────────────────
-      - CORS_ORIGINS=${CORS_ORIGINS}
     networks:
       - nicodemus-net
       - eleveia-shared
