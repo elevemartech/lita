@@ -481,6 +481,16 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
   neste turno **e** não existe `faq_plan` no estado corrente — caso contrário a chave é
   omitida do return, preservando o valor escrito pelo `tool_node`.
 
+- **ELE-220 ✅** — 400 Bad Request em `execute_faq_plan` corrigido (`agent/tools/faq_tools.py`).
+  Causa raiz: `build_faq_plan` gerava categorias em PT-BR (ex: "Matrículas", "Financeiro")
+  que a eleve-api rejeitava — aceita apenas os 10 valores EN definidos no modelo FAQ.
+  Três correcções: (1) `_CATEGORY_MAP` (PT→EN, 32 entradas), `_VALID_CATEGORIES` e
+  `_normalize_category` adicionados após os imports; (2) normalização aplicada em
+  `execute_faq_plan` logo após obter `after`, antes do bloco `if/elif` de tipo de acção
+  — usa spread `{**after, "category": ...}` para não mutar o dict original; (3) regra
+  de categorias válidas EN-only adicionada ao prompt de `build_faq_plan` após a regra
+  `wrong_category`, reduzindo a probabilidade de o LLM gerar valores em português.
+
 ---
 
 ## 13. Deploy em Produção (Swarm) — Lições aprendidas
