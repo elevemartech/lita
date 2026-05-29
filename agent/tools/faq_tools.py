@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any
 
 import httpx
 import structlog
@@ -23,6 +22,7 @@ from langchain_openai import ChatOpenAI
 from redis.asyncio import Redis
 
 from agent.tools.analyzers.faq_analyzer import FaqAnalyzer
+from core.api_client import DjangoAPIClient
 from core.settings import settings
 from schemas.faq_schemas import (
     FaqAnalysisResult,
@@ -63,32 +63,17 @@ async def list_faqs(sa_token: str = "", school_id: str = "") -> str:
         await r.aclose()
 
     all_faqs: list[dict] = []
-    url: str | None = f"{settings.eleve_api_url}/api/v1/faqs/"
-    params: dict[str, Any] = {"page_size": 500}
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            while url:
-                resp = await client.get(
-                    url,
-                    headers={"Authorization": f"Bearer {sa_token}"},
-                    params=params,
-                )
-                if resp.status_code != 200:
-                    logger.error(
-                        "list_faqs.api_error",
-                        status=resp.status_code,
-                        school_id=school_id,
-                    )
-                    return json.dumps({"error": resp.text, "status_code": resp.status_code})
-
-                data = resp.json()
-                results = data.get("results", data) if isinstance(data, dict) else data
-                if isinstance(results, list):
-                    all_faqs.extend(results)
-                url = data.get("next") if isinstance(data, dict) else None
-                params = {}  # próximas páginas: URL já contém os params
-    except httpx.RequestError as exc:
+        async with DjangoAPIClient(token=sa_token) as client:
+            data = await client.get(
+                "/api/v1/faqs/",
+                params={"school": school_id, "page_size": 200},
+            )
+        results = data.get("results", data) if isinstance(data, dict) else data
+        if isinstance(results, list):
+            all_faqs = results
+    except Exception as exc:
         logger.error("list_faqs.request_error", error=str(exc), school_id=school_id)
         return json.dumps({"error": str(exc)})
 
@@ -261,8 +246,7 @@ async def execute_faq_plan(
     results: list[FaqExecuteActionResult] = []
     counts: dict[str, int] = {"done": 0, "failed": 0, "skipped": 0}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        headers = {"Authorization": f"Bearer {sa_token}"}
+    async with DjangoAPIClient(token=sa_token) as client:
 
         for action in plan_data.get("actions", []):
             action_id = action["id"]
@@ -280,23 +264,11 @@ async def execute_faq_plan(
 
             try:
                 if action_type == "create":
-                    resp = await client.post(
-                        f"{settings.eleve_api_url}/api/v1/faqs/",
-                        headers=headers,
-                        json=after,
-                    )
+                    await client.post("/api/v1/faqs/", json=after)
                 elif action_type == "edit":
-                    resp = await client.patch(
-                        f"{settings.eleve_api_url}/api/v1/faqs/{faq_id}/",
-                        headers=headers,
-                        json=after,
-                    )
+                    await client.patch(f"/api/v1/faqs/{faq_id}/", json=after)
                 elif action_type == "deactivate":
-                    resp = await client.patch(
-                        f"{settings.eleve_api_url}/api/v1/faqs/{faq_id}/",
-                        headers=headers,
-                        json={"status": "inactive"},
-                    )
+                    await client.patch(f"/api/v1/faqs/{faq_id}/", json={"status": "inactive"})
                 else:
                     results.append(FaqExecuteActionResult(
                         action_id=action_id,
@@ -306,18 +278,10 @@ async def execute_faq_plan(
                     counts["failed"] += 1
                     continue
 
-                if resp.status_code in (200, 201):
-                    results.append(FaqExecuteActionResult(action_id=action_id, status="done"))
-                    counts["done"] += 1
-                else:
-                    results.append(FaqExecuteActionResult(
-                        action_id=action_id,
-                        status="failed",
-                        error=f"HTTP {resp.status_code}: {resp.text[:200]}",
-                    ))
-                    counts["failed"] += 1
+                results.append(FaqExecuteActionResult(action_id=action_id, status="done"))
+                counts["done"] += 1
 
-            except httpx.RequestError as exc:
+            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
                 results.append(FaqExecuteActionResult(
                     action_id=action_id,
                     status="failed",

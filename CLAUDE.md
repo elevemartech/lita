@@ -450,6 +450,10 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
   a cada turno no `llm_node`; após 2 falhas consecutivas na mesma tool, o `tool_node` termina
   o grafo imediatamente com `error: "circuit_breaker:{tool}"` e resposta amigável ao gestor.
 
+- **ELE-216 ✅** — `list_faqs` e `execute_faq_plan` corrigidos para usar `DjangoAPIClient`
+  (`Authorization: ServiceKey`) em vez de `httpx.AsyncClient` manual (`Authorization: Bearer`).
+  `from typing import Any` removido (deixou de ser usado). `agent/tools/faq_tools.py`.
+
 ---
 
 ## 13. Deploy em Produção (Swarm) — Lições aprendidas
