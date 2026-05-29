@@ -156,10 +156,20 @@ async def build_faq_plan(
         '  "actions": [\n'
         '    {\n'
         '      "id": "act_1",\n'
-        '      "type": "edit|create|deactivate",\n'
+        '      "type": "edit",\n'
+        '      "faq_id": 93,\n'
+        '      "before": {"category": "General", "question": "texto original", "answer": "resposta original"},\n'
+        '      "after": {"category": "Admission"},\n'
+        '      "reason": "Justificativa em PT-BR (1 frase)",\n'
+        '      "approved": true,\n'
+        '      "status": "pending"\n'
+        '    },\n'
+        '    {\n'
+        '      "id": "act_2",\n'
+        '      "type": "create",\n'
         '      "faq_id": null,\n'
         '      "before": null,\n'
-        '      "after": {"campo": "valor_proposto"},\n'
+        '      "after": {"question": "Nova pergunta?", "answer": "Nova resposta.", "category": "Pricing"},\n'
         '      "reason": "Justificativa em PT-BR (1 frase)",\n'
         '      "approved": true,\n'
         '      "status": "pending"\n'
@@ -174,6 +184,10 @@ async def build_faq_plan(
         "- Para 'stale': sugere edit na resposta se for possível melhorá-la\n"
         "- Nunca inventes dados factuais (valores, datas, nomes)\n"
         "- Nunca uses markdown no JSON\n"
+        "- `before` e `after` são SEMPRE objectos JSON com campos (question, answer, category, status) — NUNCA strings simples\n"
+        "- Para `deactivate`: `after` deve ser {\"status\": \"inactive\"}\n"
+        "- Para `edit` de categoria: `before` deve ter pelo menos {\"category\": \"categoria_actual\"}\n"
+        "- Para `create`: `before` deve ser null (não uma string)\n"
     )
 
     try:
