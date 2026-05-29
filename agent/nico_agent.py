@@ -13,6 +13,7 @@ import json
 
 import structlog
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages.tool import ToolCall
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
@@ -148,12 +149,11 @@ async def llm_node(state: NicoState) -> NicoState:
             raw_tcs = m.get("tool_calls", [])
             if raw_tcs:
                 lc_tool_calls = [
-                    {
-                        "id":   tc.get("id", ""),
-                        "name": tc.get("name", ""),
-                        "args": tc.get("arguments", tc.get("args", {})),
-                        "type": "tool_call",
-                    }
+                    ToolCall(
+                        id=tc["id"],
+                        name=tc["function"]["name"],
+                        args=json.loads(tc["function"]["arguments"]),
+                    )
                     for tc in raw_tcs
                 ]
                 lc_messages.append(AIMessage(content=c, tool_calls=lc_tool_calls))
@@ -206,7 +206,20 @@ async def llm_node(state: NicoState) -> NicoState:
         ]
 
     # Append a resposta do assistente ao histórico
-    new_messages = list(messages) + [{"role": "assistant", "content": response.content or ""}]
+    assistant_msg: dict = {"role": "assistant", "content": response.content or ""}
+    if response.tool_calls:
+        assistant_msg["tool_calls"] = [
+            {
+                "id":       tc["id"],
+                "type":     "function",
+                "function": {
+                    "name":      tc["name"],
+                    "arguments": json.dumps(tc["args"]),
+                },
+            }
+            for tc in response.tool_calls
+        ]
+    new_messages = list(messages) + [assistant_msg]
 
     return {
         **state,

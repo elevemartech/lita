@@ -454,6 +454,17 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
   (`Authorization: ServiceKey`) em vez de `httpx.AsyncClient` manual (`Authorization: Bearer`).
   `from typing import Any` removido (deixou de ser usado). `agent/tools/faq_tools.py`.
 
+- **ELE-217 ✅** — Loop infinito no NicoAgent corrigido (`agent/nico_agent.py`).
+  Causa raiz: a mensagem `assistant` guardada no histórico não incluía `tool_calls`,
+  tornando os `ToolMessage` seguintes órfãos — o LangChain removia-os e o LLM voltava
+  a chamar a mesma ferramenta indefinidamente.
+  Dois pontos corrigidos no `llm_node`:
+  (1) ao fazer append da mensagem assistant, inclui agora `tool_calls` em formato OpenAI
+  (`{id, type, function: {name, arguments}}`);
+  (2) ao reconstruir LangChain messages, o bloco `elif r == "assistant"` usa agora
+  `ToolCall(id, name, args)` e lê `tc["function"]["name"]` / `json.loads(tc["function"]["arguments"])`.
+  Import `ToolCall` adicionado ao topo do módulo.
+
 ---
 
 ## 13. Deploy em Produção (Swarm) — Lições aprendidas
