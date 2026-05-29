@@ -11,7 +11,7 @@ Fluxo:
     6. Persiste user_message + assistant_reply no banco
     7. Atualiza Redis com append_turn
     8. Auto-gera título na primeira mensagem (LLM com prompt curto)
-    9. Retorna { session_id, reply, file_id, file_url }
+    9. Retorna { session_id, reply, file_id, file_url, faq_plan }
 
 O JWT do usuário logado no dashboard é obrigatório.
 Sessões com status "completed" são rejeitadas com 400.
@@ -169,6 +169,8 @@ async def chat(
         title = await _generate_title(body.message)
         await SessionService.set_title(db, session, title)
 
+    faq_plan = final_state.get("faq_plan")
+
     logger.info(
         "chat.ok",
         session_id=body.session_id,
@@ -181,6 +183,7 @@ async def chat(
         reply=reply,
         file_id=file_id,
         file_url=file_url,
+        faq_plan=faq_plan,
     )
 
 

@@ -207,7 +207,8 @@ async def llm_node(state: NicoState) -> NicoState:
         "tool_calls": tool_calls,
         "response":   response.content or "",
         "error":      None,
-        **({"faq_intent": faq_intent} if faq_intent else {}),
+        "faq_plan":   None,
+        **(({"faq_intent": faq_intent} if faq_intent else {})),
     }
 
 
@@ -246,6 +247,14 @@ async def tool_node(state: NicoState) -> NicoState:
             "tool_call_id": tc_id,
             "tool_name":    name,
         })
+
+        if name == "build_faq_plan":
+            try:
+                plan_data = json.loads(result_str)
+                if "plan_id" in plan_data:
+                    state = {**state, "faq_plan": plan_data}
+            except (json.JSONDecodeError, KeyError):
+                pass
 
         logger.info("tool_node.executed", tool=name, session_id=state.get("session_id"))
 

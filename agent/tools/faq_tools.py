@@ -131,7 +131,6 @@ async def analyze_faqs(
         total=result.total_faqs,
         issues=len(result.issues),
         school_id=school_id,
-        intent=intent,
     )
     return result.model_dump_json()
 

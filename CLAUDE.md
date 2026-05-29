@@ -133,7 +133,7 @@ DELETE /sessions/{id}/
 POST /chat/
   → Recebe: { session_id, message }
   → Processa mensagem via NicoAgent (ReAct)
-  → Retorna: { session_id, reply, file_id?, file_url? }
+  → Retorna: { session_id, reply, file_id?, file_url?, faq_plan? }
 
 POST /chat/faq/execute
   → Recebe: { session_id, plan_id, actions: [{id, approved, after?}] }
@@ -257,6 +257,7 @@ class NicoState(TypedDict, total=False):
     tool_calls:   list[dict]
     response:     str
     error:        str | None
+    faq_plan:     dict | None  # FaqPlan serializado — escrito pelo tool_node após build_faq_plan
 ```
 
 **ATENÇÃO:** Nunca importe os dois `NicoState` no mesmo arquivo. Use o caminho
@@ -427,6 +428,15 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
 - **ELE-203 ✅** — GET /sessions/summary/ criado em `routers/sessions.py`;
   `SummaryResponse` adicionado a `schemas/session_types.py`;
   rota posicionada antes de `/{session_id}/` para evitar conflito UUID.
+
+- **ELE-211 ✅** — NameError corrigido em `analyze_faqs` (`agent/tools/faq_tools.py`):
+  `intent=intent` removido do `logger.info` (variável inexistente nesse escopo).
+
+- **ELE-212 ✅** — `faq_plan` escrito no `NicoState` após `build_faq_plan`:
+  reset para `None` no `llm_node`; detecção e escrita no `tool_node` (`agent/nico_agent.py`).
+
+- **ELE-213 ✅** — `faq_plan: Optional[dict]` adicionado a `ChatResponse`
+  (`schemas/session_types.py`) e propagado no endpoint POST /chat/ (`routers/chat.py`).
 
 ---
 

@@ -49,6 +49,7 @@ class ChatResponse(BaseModel):
     reply:      str
     file_id:    Optional[str] = None
     file_url:   Optional[str] = None
+    faq_plan:   Optional[dict] = None
 
 
 class BriefingResponse(BaseModel):
