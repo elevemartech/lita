@@ -472,7 +472,14 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
   com `before`/`after` como objectos JSON completos, e um `create` com `before: null`.
   Quatro regras adicionadas ao fim da lista: `before` e `after` são SEMPRE objectos JSON;
   `deactivate` exige `after: {"status": "inactive"}`; `edit` de categoria exige
-  `before` com pelo menos `{"category": "..."}` ; `create` exige `before: null`.
+  `before` com pelo menos `{"category": "..."}`; `create` exige `before: null`.
+
+- **ELE-219 ✅** — `faq_plan` apagado pelo `llm_node` após `tool_node` escrever o plano
+  (`agent/nico_agent.py`). Causa raiz: o `llm_node` incluía `"faq_plan": None`
+  incondicionalmente no return, apagando o plano antes de chegar ao `ChatResponse`.
+  Correcção: `faq_plan` só é resetado a `None` quando o LLM não chamou `build_faq_plan`
+  neste turno **e** não existe `faq_plan` no estado corrente — caso contrário a chave é
+  omitida do return, preservando o valor escrito pelo `tool_node`.
 
 ---
 

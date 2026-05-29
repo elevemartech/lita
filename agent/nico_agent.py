@@ -1,5 +1,4 @@
-"""
-agent/nico_agent.py — Agente conversacional ReAct para gestores escolares.
+"""agent/nico_agent.py — Agente conversacional ReAct para gestores escolares.
 
 StateGraph: llm_node → should_use_tools → tool_node → llm_node (loop) | END
 
@@ -221,15 +220,25 @@ async def llm_node(state: NicoState) -> NicoState:
         ]
     new_messages = list(messages) + [assistant_msg]
 
+    # Só reseta faq_plan se o LLM NÃO chamou build_faq_plan neste turno
+    # (se chamou, o tool_node vai escrever o plano no estado a seguir)
+    has_build_plan_call = any(
+        tc.get("name") == "build_faq_plan" for tc in tool_calls
+    )
+
     return {
         **state,
-        "messages":         new_messages,
-        "tool_calls":       tool_calls,
-        "response":         response.content or "",
-        "error":            None,
-        "faq_plan":         None,
-        "tool_error_counts": {},  # reset a cada turno do gestor
-        **(({"faq_intent": faq_intent} if faq_intent else {})),
+        "messages":          new_messages,
+        "tool_calls":        tool_calls,
+        "response":          response.content or "",
+        "error":             None,
+        "tool_error_counts": {},
+        **({
+            "faq_plan": None
+        } if not has_build_plan_call and not state.get("faq_plan") else {}),
+        **({
+            "faq_intent": faq_intent
+        } if faq_intent else {}),
     }
 
 
