@@ -28,6 +28,8 @@ _llm = ChatOpenAI(
     temperature=0,
 ).bind_tools(TOOLS_REGISTRY)
 
+_MAX_TOOL_ITERATIONS = 5
+
 
 def _build_system_prompt(user_name: str, role: str) -> str:
     return (
@@ -47,7 +49,73 @@ def _build_system_prompt(user_name: str, role: str) -> str:
         "- Se não souber responder, diga claramente.\n"
         "- Responda sempre em português brasileiro.\n"
         "- Para FAQs: sempre mostre o plano ANTES de executar. Nunca execute sem aprovação.\n"
+        "- Se uma ferramenta retornar erro, informe o gestor claramente e NÃO tente chamar a ferramenta novamente.\n"
     )
+
+
+def _sanitize_messages(messages: list[dict]) -> list[dict]:
+    """
+    Remove mensagens role='tool' órfãs do histórico.
+
+    A OpenAI exige que toda mensagem tool venha imediatamente após
+    uma mensagem assistant que contenha tool_calls. Quando o histórico
+    vem do Redis com turnos antigos, essa sequência pode estar quebrada
+    causando BadRequestError 400.
+    """
+    valid_tc_ids: set[str] = set()
+    for m in messages:
+        if m.get("role") == "assistant":
+            for tc in m.get("tool_calls", []):
+                tc_id = tc.get("id", "")
+                if tc_id:
+                    valid_tc_ids.add(tc_id)
+
+    sanitized = []
+    for m in messages:
+        if m.get("role") == "tool":
+            if m.get("tool_call_id", "") not in valid_tc_ids:
+                logger.warning(
+                    "nico_agent.orphan_tool_msg_removed",
+                    tool_call_id=m.get("tool_call_id"),
+                    tool_name=m.get("tool_name"),
+                )
+                continue
+        sanitized.append(m)
+
+    surviving_tc_ids: set[str] = {
+        m.get("tool_call_id", "")
+        for m in sanitized
+        if m.get("role") == "tool"
+    }
+    result = []
+    for m in sanitized:
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            has_response = any(
+                tc.get("id", "") in surviving_tc_ids
+                for tc in m.get("tool_calls", [])
+            )
+            if not has_response:
+                logger.warning(
+                    "nico_agent.assistant_tool_calls_removed",
+                    tool_calls=[tc.get("name") for tc in m.get("tool_calls", [])],
+                )
+                if m.get("content"):
+                    result.append({"role": "assistant", "content": m["content"]})
+                continue
+        result.append(m)
+
+    return result
+
+
+def _count_tool_iterations(messages: list[dict]) -> int:
+    """Conta quantas rodadas de tool_calls ocorreram no turno actual."""
+    count = 0
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            break
+        if m.get("role") == "tool":
+            count += 1
+    return count
 
 
 async def llm_node(state: NicoState) -> NicoState:
@@ -58,6 +126,9 @@ async def llm_node(state: NicoState) -> NicoState:
     user_name = state.get("user_name", "Gestor")
     role      = state.get("role", "manager")
     messages  = state.get("messages", [])
+
+    # Sanitiza histórico antes de converter — remove tool msgs órfãs
+    messages = _sanitize_messages(messages)
 
     # Converte dicts → LangChain messages
     lc_messages: list = [SystemMessage(content=_build_system_prompt(user_name, role))]
@@ -161,7 +232,6 @@ async def tool_node(state: NicoState) -> NicoState:
         if not tool_fn:
             result_str = json.dumps({"error": f"Ferramenta '{name}' não encontrada."})
         else:
-            # Injeta contexto de autenticação
             args["sa_token"]  = sa_token
             args["school_id"] = school_id
             try:
@@ -183,8 +253,23 @@ async def tool_node(state: NicoState) -> NicoState:
 
 
 def should_use_tools(state: NicoState) -> str:
-    """Rota condicional: há tool_calls → tool_node; senão → END."""
-    return "tool_node" if state.get("tool_calls") else END
+    """
+    Rota condicional: há tool_calls → tool_node; senão → END.
+    Impõe limite máximo de iterações de tools por turno para evitar loops infinitos.
+    """
+    if not state.get("tool_calls"):
+        return END
+
+    iterations = _count_tool_iterations(state.get("messages", []))
+    if iterations >= _MAX_TOOL_ITERATIONS:
+        logger.warning(
+            "nico_agent.max_tool_iterations_reached",
+            iterations=iterations,
+            session_id=state.get("session_id"),
+        )
+        return END
+
+    return "tool_node"
 
 
 def build_nico_graph() -> StateGraph:

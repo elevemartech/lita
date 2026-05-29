@@ -78,6 +78,7 @@ def _extract_file_id(messages: list[dict]) -> str | None:
     return None
 
 
+@router.post("/", response_model=ChatResponse)
 @router.post("/message", response_model=ChatResponse)
 async def chat(
     body: ChatRequest,
@@ -134,7 +135,7 @@ async def chat(
         "error":        None,
     }
 
-    final_state: NicoState = await nico_graph.ainvoke(initial_state)
+    final_state: NicoState = await nico_graph.ainvoke(initial_state, config={"recursion_limit": 10})
 
     reply = final_state.get("response") or ""
     if not reply:
