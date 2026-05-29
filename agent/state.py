@@ -41,3 +41,6 @@ class NicoState(TypedDict, total=False):
     faq_intent:      str            # "analyze"|"organize"|"audit"|"create"|"edit"|"bulk_clean"
     faq_plan:        dict | None    # FaqPlan serializado (evita dependência circular)
     pending_actions: list[dict]     # acções aprovadas aguardando execução
+
+    # ── circuit breaker ──────────────────────────────────────────────
+    tool_error_counts: dict         # contador de falhas consecutivas por tool — reset a cada turno

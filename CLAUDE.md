@@ -257,7 +257,8 @@ class NicoState(TypedDict, total=False):
     tool_calls:   list[dict]
     response:     str
     error:        str | None
-    faq_plan:     dict | None  # FaqPlan serializado — escrito pelo tool_node após build_faq_plan
+    faq_plan:          dict | None  # FaqPlan serializado — escrito pelo tool_node após build_faq_plan
+    tool_error_counts: dict         # contador de falhas consecutivas por tool — reset a cada turno
 ```
 
 **ATENÇÃO:** Nunca importe os dois `NicoState` no mesmo arquivo. Use o caminho
@@ -442,6 +443,12 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
   `agent/nico_agent.py` (13 gatilhos). Frases naturais do gestor como "verifique respostas
   vazias", "corrija duplicadas" ou "melhore a central de ajuda" agora disparam o fluxo
   FAQ sem exigir "faq" ou "pergunta" explícitos.
+
+- **ELE-215 ✅** — Circuit breaker no `tool_node` (`agent/nico_agent.py`) para evitar
+  `GraphRecursionError` quando uma tool devolve `{"error": "..."}` sem lançar exception.
+  `tool_error_counts: dict` adicionado ao `NicoState` (`agent/state.py`); contador resetado
+  a cada turno no `llm_node`; após 2 falhas consecutivas na mesma tool, o `tool_node` termina
+  o grafo imediatamente com `error: "circuit_breaker:{tool}"` e resposta amigável ao gestor.
 
 ---
 

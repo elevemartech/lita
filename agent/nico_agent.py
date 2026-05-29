@@ -210,11 +210,12 @@ async def llm_node(state: NicoState) -> NicoState:
 
     return {
         **state,
-        "messages":   new_messages,
-        "tool_calls": tool_calls,
-        "response":   response.content or "",
-        "error":      None,
-        "faq_plan":   None,
+        "messages":         new_messages,
+        "tool_calls":       tool_calls,
+        "response":         response.content or "",
+        "error":            None,
+        "faq_plan":         None,
+        "tool_error_counts": {},  # reset a cada turno do gestor
         **(({"faq_intent": faq_intent} if faq_intent else {})),
     }
 
@@ -247,6 +248,35 @@ async def tool_node(state: NicoState) -> NicoState:
             except Exception as exc:
                 logger.error("tool_node.error", tool=name, error=str(exc))
                 result_str = json.dumps({"error": str(exc)})
+
+        # Detetar se o resultado é um erro
+        tool_error_counts = dict(state.get("tool_error_counts") or {})
+        try:
+            result_data = json.loads(result_str)
+            if isinstance(result_data, dict) and "error" in result_data:
+                tool_error_counts[name] = tool_error_counts.get(name, 0) + 1
+            else:
+                tool_error_counts[name] = 0
+        except (json.JSONDecodeError, TypeError):
+            tool_error_counts[name] = 0
+
+        state = {**state, "tool_error_counts": tool_error_counts}
+
+        # Circuit breaker — tool falhou 2x consecutivas → parar loop
+        if tool_error_counts.get(name, 0) >= 2:
+            logger.warning(
+                "tool_node.circuit_breaker",
+                tool=name,
+                session_id=state.get("session_id"),
+            )
+            return {
+                **state,
+                "messages": messages,
+                "tool_calls": [],
+                "tool_error_counts": {},
+                "response": "Não consegui acessar as informações necessárias no momento. Tente novamente em alguns instantes.",
+                "error": f"circuit_breaker:{name}",
+            }
 
         messages.append({
             "role":         "tool",
