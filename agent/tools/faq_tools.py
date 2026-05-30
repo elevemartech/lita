@@ -34,6 +34,53 @@ from schemas.faq_schemas import (
 
 logger = structlog.get_logger(__name__)
 
+_CATEGORY_MAP: dict[str, str] = {
+    "matrículas":      "Admission",
+    "matriculas":      "Admission",
+    "admissão":        "Admission",
+    "admissao":        "Admission",
+    "financeiro":      "Pricing",
+    "preços":          "Pricing",
+    "precos":          "Pricing",
+    "uniforme":        "Uniform",
+    "horários":        "Schedule",
+    "horarios":        "Schedule",
+    "calendário":      "Schedule",
+    "calendario":      "Schedule",
+    "documentação":    "Documentation",
+    "documentacao":    "Documentation",
+    "atividades":      "Activities",
+    "alimentação":     "Meals",
+    "alimentacao":     "Meals",
+    "cantina":         "Meals",
+    "transporte":      "Transport",
+    "pedagógico":      "Pedagogical",
+    "pedagogico":      "Pedagogical",
+    "académico":       "Pedagogical",
+    "academico":       "Pedagogical",
+    "geral":           "General",
+    "outros":          "General",
+    "tecnologia":      "General",
+    "professores":     "General",
+    "biblioteca":      "General",
+    "vida escolar":    "General",
+    "saúde":           "General",
+    "saude":           "General",
+}
+
+_VALID_CATEGORIES = {
+    "Admission", "Pricing", "Uniform", "Schedule", "Documentation",
+    "Activities", "Meals", "Transport", "Pedagogical", "General",
+}
+
+
+def _normalize_category(value: str) -> str:
+    """Normaliza categoria PT→EN. Fallback para General se não reconhecida."""
+    if value in _VALID_CATEGORIES:
+        return value
+    return _CATEGORY_MAP.get(value.lower().strip(), "General")
+
+
 _FAQ_CACHE_PREFIX = "nicodemus:faqs"
 _FAQ_CACHE_TTL = 300       # 5 minutos
 
@@ -181,6 +228,9 @@ async def build_faq_plan(
         "- Para issues do tipo 'empty_answer': sugere uma resposta concisa baseada na pergunta\n"
         "- Para 'duplicate': sugere deactivate na FAQ mais antiga\n"
         "- Para 'wrong_category': sugere edit na categoria correcta\n"
+        "- Categorias válidas para `after.category`: Admission, Pricing, Uniform, "
+        "Schedule, Documentation, Activities, Meals, Transport, Pedagogical, General "
+        "— NUNCA usar valores em português\n"
         "- Para 'stale': sugere edit na resposta se for possível melhorá-la\n"
         "- Nunca inventes dados factuais (valores, datas, nomes)\n"
         "- Nunca uses markdown no JSON\n"
@@ -275,6 +325,9 @@ async def execute_faq_plan(
             after = override.get("after") or action.get("after", {})
             faq_id = action.get("faq_id")
             action_type = action["type"]
+
+            if "category" in after:
+                after = {**after, "category": _normalize_category(after["category"])}
 
             try:
                 if action_type == "create":
