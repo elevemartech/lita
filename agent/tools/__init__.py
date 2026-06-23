@@ -18,6 +18,9 @@ from tools.generate_xlsx import generate_xlsx as _generate_xlsx
 from tools.query_api import query_api as _query_api
 from agent.tools.faq_tools import analyze_faqs, build_faq_plan, execute_faq_plan, list_faqs
 from agent.tools.get_school_summary import get_school_summary
+from agent.tools.find_student import find_student
+from agent.tools.create_secretary_request import create_secretary_request
+from agent.tools.update_student_record import update_student_record
 
 
 @tool
@@ -155,4 +158,7 @@ TOOLS_REGISTRY = [
     build_faq_plan,
     execute_faq_plan,
     get_school_summary,
+    find_student,
+    create_secretary_request,
+    update_student_record,
 ]
