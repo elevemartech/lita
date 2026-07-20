@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -36,7 +35,7 @@ class MessageResponse(BaseModel):
 
 class SessionDetailResponse(SessionResponse):
     messages: list[MessageResponse] = []
-    summary:  Optional[str] = None
+    summary:  str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -47,9 +46,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     reply:      str
-    file_id:    Optional[str] = None
-    file_url:   Optional[str] = None
-    faq_plan:   Optional[dict] = None
+    file_id:    str | None = None
+    file_url:   str | None = None
+    faq_plan:   dict | None = None
 
 
 class BriefingResponse(BaseModel):

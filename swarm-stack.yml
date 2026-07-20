@@ -25,6 +25,7 @@ version: "3.9"
 #   eleveia-shared → external — criada pelo stack eleveia-api
 #                    nome real na VPS: eleveia-api_eleveia-shared
 #                    (deploy eleveia-api ANTES deste stack)
+#   EleveMarTech   → external — rede do Traefik (criada pelo stack do Traefik)
 #
 # BANCO:
 #   Não sobe container de banco.
@@ -35,8 +36,13 @@ version: "3.9"
 #   alembic upgrade head corre dentro do command, antes do uvicorn.
 #   Se falhar, o container não sobe — intencionalmente.
 #
-# PORTA:
-#   8001 exposta directamente no host (mesmo padrão da eleveia-api).
+# DOMÍNIO / TRAEFIK:
+#   Sem porta exposta no host — o Traefik roteia via rede EleveMarTech,
+#   mesmo padrão real da eleveia-api (ver ../eleveia-api/swarm-stack.yml).
+#   TLS via Let's Encrypt (certresolver: letsencryptresolver).
+#   Endpoint: lita.elevemartech.com.br
+#   Pré-requisito: DNS (A/CNAME) de lita.elevemartech.com.br apontando
+#   para o mesmo IP/VPS onde o Traefik já escuta.
 #   ELEVE_API_URL no .env deve apontar para o serviço interno:
 #     http://eleveia-api_api:8000
 # ===================================================================
@@ -52,8 +58,6 @@ services:
       - sh
       - -c
       - "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2 --log-level info --access-log"
-    ports:
-      - "8001:8001"
     environment:
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=production
@@ -73,9 +77,12 @@ services:
       - FILE_STORAGE_TTL=${FILE_STORAGE_TTL:-900}
       - FILE_STORAGE_DIR=${FILE_STORAGE_DIR:-/tmp}
       # ── CORS ──────────────────────────────────────────────────
+      # Domínios do dashboard em produção (separados por vírgula ou JSON array)
+      - CORS_ORIGINS=${CORS_ORIGINS}
     networks:
       - nicodemus-net
       - eleveia-shared
+      - EleveMarTech
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -84,6 +91,14 @@ services:
       start_period: 40s
     deploy:
       replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.nicodemus-adm.rule=Host(`lita.elevemartech.com.br`)"
+        - "traefik.http.routers.nicodemus-adm.entrypoints=websecure"
+        - "traefik.http.routers.nicodemus-adm.tls=true"
+        - "traefik.http.routers.nicodemus-adm.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.nicodemus-adm.loadbalancer.server.port=8001"
+        - "traefik.http.routers.nicodemus-adm.service=nicodemus-adm"
       resources:
         limits:
           memory: 1g
@@ -161,6 +176,9 @@ volumes:
 #                    pelo Swarm: eleveia-api_eleveia-shared.
 #                    Permite ao app comunicar com a eleve-api
 #                    pelo hostname interno: eleveia-api_api:8000
+#   EleveMarTech   → external — rede do Traefik, criada pelo stack traefik.
+#                    Permite o roteamento de lita.elevemartech.com.br
+#                    até este serviço, com TLS via Let's Encrypt.
 # ────────────────────────────────────────────────────────────────
 networks:
   nicodemus-net:
@@ -169,3 +187,5 @@ networks:
   eleveia-shared:
     external: true
     name: eleveia-api_eleveia-shared
+  EleveMarTech:
+    external: true

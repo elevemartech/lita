@@ -15,7 +15,6 @@ import pytest
 from agents.doc_reader import doc_reader_graph
 from agents.state import NicoState
 
-
 FAKE_SA_TOKEN = "sa_live_test_abc123"
 FAKE_FILE_B64 = base64.b64encode(b"fake_image_bytes").decode()
 

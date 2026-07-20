@@ -11,6 +11,7 @@ com base em documentos reais da escola (regimentos, circulares, políticas, etc.
 from __future__ import annotations
 
 import json
+
 import structlog
 from langchain_core.tools import tool
 
@@ -68,7 +69,10 @@ async def search_knowledge_base(
         logger.info("search_knowledge_base.no_results", query=query[:60], school_id=school_id)
         return json.dumps({
             "found": False,
-            "message": "Nenhum documento relevante encontrado na base de conhecimento da escola para essa consulta.",
+            "message": (
+                "Nenhum documento relevante encontrado na base de conhecimento "
+                "da escola para essa consulta."
+            ),
             "query": query,
         })
 

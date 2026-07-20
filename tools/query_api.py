@@ -7,6 +7,7 @@ Retorna lista normalizada de registros prontos para generate_xlsx/generate_docx.
 from __future__ import annotations
 
 import json
+
 import structlog
 from langchain_core.tools import tool
 
@@ -26,7 +27,8 @@ async def query_api(
     Busca dados da eleve-api conforme entidade e filtros do plano do relatório.
 
     Args:
-        entity:  Entidade do relatório: "inadimplencia" | "matriculas" | "solicitacoes" | "frequencia".
+        entity:  Entidade do relatório: "inadimplencia" | "matriculas" |
+            "solicitacoes" | "frequencia".
         filters: Dicionário de filtros (month, grade, status, year, etc.).
         sa_token: ServiceKey da escola.
 

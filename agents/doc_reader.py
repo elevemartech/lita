@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import uuid
+
 import structlog
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
 from agents.state import NicoState
 from tools.extract_document import extract_document

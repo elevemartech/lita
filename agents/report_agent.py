@@ -12,17 +12,18 @@ StateGraph:
 from __future__ import annotations
 
 import json
+
 import structlog
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
 from agents.state import NicoState
-from tools.query_api import query_api
-from tools.generate_xlsx import generate_xlsx
-from tools.generate_docx import generate_docx
-from schemas.report_types import infer_entity, SUPPORTED_ENTITIES, SUPPORTED_FORMATS
 from core.settings import settings
+from schemas.report_types import SUPPORTED_ENTITIES, SUPPORTED_FORMATS
+from tools.generate_docx import generate_docx
+from tools.generate_xlsx import generate_xlsx
+from tools.query_api import query_api
 
 logger = structlog.get_logger(__name__)
 
@@ -60,9 +61,6 @@ Regras:
 async def plan_node(state: NicoState) -> NicoState:
     """Interpreta o prompt e monta o plano de relatório."""
     logger.info("report_agent.plan", prompt=state.get("user_prompt", "")[:80])
-
-    # Tenta inferir entidade sem LLM primeiro (mais rápido)
-    entity = infer_entity(state.get("user_prompt", ""))
 
     messages = [
         SystemMessage(content=_PLAN_SYSTEM),

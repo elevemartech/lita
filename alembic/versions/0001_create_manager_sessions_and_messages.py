@@ -11,8 +11,9 @@ Cria as tabelas:
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0001"
@@ -29,10 +30,14 @@ def upgrade() -> None:
         sa.Column("school_id",        sa.String(255), nullable=False),
         sa.Column("role",             sa.String(50),  nullable=False),
         sa.Column("user_name",        sa.String(255), nullable=False),
-        sa.Column("title",            sa.String(500), nullable=False, server_default="Nova conversa"),
+        sa.Column(
+            "title", sa.String(500), nullable=False, server_default="Nova conversa"
+        ),
         sa.Column("status",           sa.String(50),  nullable=False, server_default="active"),
         sa.Column("summary",          sa.Text(),      nullable=True),
-        sa.Column("is_deleted",       sa.Boolean(),   nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "is_deleted", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
         sa.Column("message_count",    sa.Integer(),   nullable=False, server_default=sa.text("0")),
         sa.Column("report_count",     sa.Integer(),   nullable=False, server_default=sa.text("0")),
         sa.Column("created_at",       sa.DateTime(timezone=True), nullable=False),

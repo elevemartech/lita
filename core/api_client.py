@@ -10,24 +10,35 @@ Exemplo:
 """
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import structlog
+
 from core.settings import settings
 
 logger = structlog.get_logger(__name__)
 
+# GET é idempotente — pode reter com segurança em erro 5xx transitório.
+# POST/PATCH não retêm em nível de resposta (poderiam duplicar efeitos);
+# retêm apenas em nível de transporte (erro de conexão, antes do request chegar ao servidor).
+_RETRYABLE_STATUS = {502, 503, 504}
+
 
 class DjangoAPIClient:
-    def __init__(self, token: str, timeout: float = 20.0):
+    def __init__(self, token: str, timeout: float = 20.0, max_retries: int = 2):
         self._token = token
         self._timeout = timeout
+        self._max_retries = max_retries
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> "DjangoAPIClient":
+    async def __aenter__(self) -> DjangoAPIClient:
+        transport = httpx.AsyncHTTPTransport(retries=self._max_retries)
         self._client = httpx.AsyncClient(
             base_url=settings.eleve_api_url,
             headers={"Authorization": f"ServiceKey {self._token}"},
             timeout=self._timeout,
+            transport=transport,
         )
         return self
 
@@ -36,9 +47,19 @@ class DjangoAPIClient:
             await self._client.aclose()
 
     async def get(self, path: str, **kwargs) -> dict | list:
-        resp = await self._client.get(path, **kwargs)
-        resp.raise_for_status()
-        return resp.json()
+        attempt = 0
+        while True:
+            resp = await self._client.get(path, **kwargs)
+            if resp.status_code in _RETRYABLE_STATUS and attempt < self._max_retries:
+                attempt += 1
+                delay = 0.5 * 2**attempt
+                logger.warning(
+                    "eleve_api.retry", path=path, status=resp.status_code, attempt=attempt
+                )
+                await asyncio.sleep(delay)
+                continue
+            resp.raise_for_status()
+            return resp.json()
 
     async def post(self, path: str, json: dict, **kwargs) -> dict:
         resp = await self._client.post(path, json=json, **kwargs)

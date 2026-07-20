@@ -4,14 +4,14 @@ tests/test_faq_tools.py — Testes unitários do módulo FAQ Manager.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from agent.tools.analyzers.faq_analyzer import FaqAnalyzer
 from schemas.faq_schemas import FaqItem
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ def make_faq(**kwargs) -> FaqItem:
         "answer": "Funcionamos de segunda a sexta das 7h às 17h.",
         "category": "Vida Escolar",
         "status": "active",
-        "updated_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(UTC),
     }
     defaults.update(kwargs)
     return FaqItem(**defaults)
@@ -106,8 +106,14 @@ def test_not_duplicate_when_different():
 
 def test_stale_detected():
     """FAQ com updated_at > 90 dias deve gerar issue stale."""
-    old = datetime.now(timezone.utc) - timedelta(days=120)
-    faqs = [make_faq(id=1, updated_at=old, answer="Resposta longa o suficiente para não ser quality issue")]
+    old = datetime.now(UTC) - timedelta(days=120)
+    faqs = [
+        make_faq(
+            id=1,
+            updated_at=old,
+            answer="Resposta longa o suficiente para não ser quality issue",
+        )
+    ]
     result = FaqAnalyzer().analyze(faqs)
     assert any(i.issue_type == "stale" and i.faq_id == 1 for i in result.issues)
     assert result.stale_count == 1
@@ -115,7 +121,7 @@ def test_stale_detected():
 
 def test_stale_not_triggered_when_recent():
     """FAQ actualizada ontem não deve ter issue stale."""
-    recent = datetime.now(timezone.utc) - timedelta(days=1)
+    recent = datetime.now(UTC) - timedelta(days=1)
     faqs = [make_faq(id=1, updated_at=recent)]
     result = FaqAnalyzer().analyze(faqs)
     assert not any(i.issue_type == "stale" for i in result.issues)
@@ -221,9 +227,10 @@ async def test_list_faqs_api_error():
     """Erro HTTP da API deve retornar JSON com error sem lançar excepção."""
     from agent.tools.faq_tools import list_faqs
 
-    mock_resp = MagicMock()
-    mock_resp.status_code = 500
-    mock_resp.text = "Internal Server Error"
+    # Resposta httpx real (não MagicMock) — raise_for_status() precisa
+    # levantar de verdade para exercitar o except em list_faqs.
+    mock_request = httpx.Request("GET", "http://test/api/v1/faqs/")
+    mock_resp = httpx.Response(500, request=mock_request, text="Internal Server Error")
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
@@ -241,7 +248,7 @@ async def test_list_faqs_api_error():
 
     data = json.loads(result)
     assert "error" in data
-    assert data["status_code"] == 500
+    assert "500" in data["error"]
 
 
 @pytest.mark.asyncio

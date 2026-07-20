@@ -12,15 +12,15 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from core.database import Base
-from core.settings import settings
+import models.message  # noqa: F401
 
 # Importa todos os models para que o Base.metadata os contenha
-import models.session   # noqa: F401
-import models.message   # noqa: F401
+import models.session  # noqa: F401
+from alembic import context
+from core.database import Base
+from core.settings import settings
 
 # Configuração de logging do alembic.ini
 config = context.config
@@ -50,7 +50,11 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_migrations() -> None:
     """Modo online: conecta ao banco via engine assíncrono."""
-    connectable = create_async_engine(settings.database_url)
+    # statement_cache_size=0: mesmo motivo do core/database.py — obrigatório
+    # com Supabase transaction pooler (Supavisor/PgBouncer).
+    connectable = create_async_engine(
+        settings.database_url, connect_args={"statement_cache_size": 0}
+    )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()

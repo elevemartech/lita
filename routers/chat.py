@@ -190,6 +190,7 @@ async def chat(
 # ── FAQ Manager endpoints ─────────────────────────────────────────────────────
 
 from redis.asyncio import Redis as _FaqRedis  # noqa: E402  (local import — evita circular)
+
 from agent.tools.faq_tools import execute_faq_plan as _execute_faq_plan  # noqa: E402
 from schemas.faq_schemas import FaqExecuteRequest, FaqExecuteResponse  # noqa: E402
 from schemas.faq_schemas import FaqPlan as _FaqPlan  # noqa: E402

@@ -12,12 +12,13 @@ import json
 
 from langchain_core.tools import tool
 
+from agent.tools.faq_tools import analyze_faqs, build_faq_plan, execute_faq_plan, list_faqs
+from agent.tools.get_school_summary import get_school_summary
+
 # Importa as tools existentes — NÃO modifica seus módulos
 from tools.generate_docx import generate_docx as _generate_docx
 from tools.generate_xlsx import generate_xlsx as _generate_xlsx
 from tools.query_api import query_api as _query_api
-from agent.tools.faq_tools import analyze_faqs, build_faq_plan, execute_faq_plan, list_faqs
-from agent.tools.get_school_summary import get_school_summary
 
 
 @tool

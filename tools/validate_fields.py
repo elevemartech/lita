@@ -10,6 +10,7 @@ após confirmação humana obrigatória.
 from __future__ import annotations
 
 import json
+
 import structlog
 from langchain_core.tools import tool
 
@@ -69,10 +70,11 @@ async def validate_fields(
         })
 
 
-async def _validate_payment(client: DjangoAPIClient, extracted: dict, validated: dict, flags: list) -> None:
+async def _validate_payment(
+    client: DjangoAPIClient, extracted: dict, validated: dict, flags: list
+) -> None:
     """Cruza comprovante com boletos abertos do responsável."""
     student_name = extracted.get("student_name", "")
-    amount       = extracted.get("amount")
 
     if not student_name:
         flags.append("CAMPO_OBRIGATORIO_AUSENTE:student_name")
@@ -95,7 +97,9 @@ async def _validate_payment(client: DjangoAPIClient, extracted: dict, validated:
         flags.append(f"ERRO_BUSCA_API:{exc}")
 
 
-async def _validate_contract(client: DjangoAPIClient, extracted: dict, validated: dict, flags: list) -> None:
+async def _validate_contract(
+    client: DjangoAPIClient, extracted: dict, validated: dict, flags: list
+) -> None:
     """Cruza contrato com matrículas existentes."""
     student_name = extracted.get("student_name", "")
 
@@ -120,7 +124,9 @@ async def _validate_contract(client: DjangoAPIClient, extracted: dict, validated
         flags.append(f"ERRO_BUSCA_API:{exc}")
 
 
-async def _validate_boletim(client: DjangoAPIClient, extracted: dict, validated: dict, flags: list) -> None:
+async def _validate_boletim(
+    client: DjangoAPIClient, extracted: dict, validated: dict, flags: list
+) -> None:
     """Valida boletim — apenas verifica se o aluno existe."""
     student_name = extracted.get("student_name", "")
 

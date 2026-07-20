@@ -13,7 +13,7 @@ from datetime import datetime
 import structlog
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, RGBColor, Inches
+from docx.shared import Inches, Pt, RGBColor
 from langchain_core.tools import tool
 
 from core.file_storage import save_file

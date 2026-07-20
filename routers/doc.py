@@ -14,16 +14,16 @@ from __future__ import annotations
 import base64
 import json
 import uuid
-import structlog
 
+import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from agents.doc_reader import doc_reader_graph
 from agents.state import NicoState
 from core.auth import CurrentUser, get_current_user
-from tools.patch_request import patch_request
 from schemas.doc_types import SUPPORTED_DOC_TYPES
+from tools.patch_request import patch_request
 
 logger = structlog.get_logger(__name__)
 

@@ -7,6 +7,7 @@ Cria um Request na eleve-api, que gera protocolo e BoardCard via signal.
 from __future__ import annotations
 
 import json
+
 import structlog
 from langchain_core.tools import tool
 
@@ -63,9 +64,14 @@ async def patch_request(
 
 
 def _build_description(doc_type: str, fields: dict, student_name: str) -> str:
+    name = student_name or fields.get("student_name", "?")
     labels = {
-        "comprovante_pagamento": f"Comprovante de pagamento registrado pelo Nicodemus ADM. Aluno: {student_name or fields.get('student_name', '?')}.",
-        "contrato_matricula":   f"Contrato de matrícula processado pelo Nicodemus ADM. Aluno: {student_name or fields.get('student_name', '?')}.",
-        "boletim":              f"Boletim escolar registrado pelo Nicodemus ADM. Aluno: {student_name or fields.get('student_name', '?')}.",
+        "comprovante_pagamento": (
+            f"Comprovante de pagamento registrado pelo Nicodemus ADM. Aluno: {name}."
+        ),
+        "contrato_matricula": (
+            f"Contrato de matrícula processado pelo Nicodemus ADM. Aluno: {name}."
+        ),
+        "boletim": f"Boletim escolar registrado pelo Nicodemus ADM. Aluno: {name}.",
     }
     return labels.get(doc_type, f"Documento processado pelo Nicodemus ADM ({doc_type}).")

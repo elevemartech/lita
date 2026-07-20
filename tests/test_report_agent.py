@@ -11,7 +11,6 @@ import pytest
 from agents.report_agent import report_graph
 from agents.state import NicoState
 
-
 FAKE_SA_TOKEN = "sa_live_test_abc123"
 
 FAKE_INVOICE_DATA = [

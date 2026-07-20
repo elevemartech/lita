@@ -29,6 +29,11 @@ engine = create_async_engine(
     settings.database_url,
     echo=settings.environment == "development",
     pool_pre_ping=True,
+    # statement_cache_size=0: obrigatório com Supabase transaction pooler
+    # (Supavisor/PgBouncer) — a conexão física é partilhada entre requisições,
+    # e o cache de prepared statements do asyncpg causa "prepared statement
+    # already exists" nesse modo.
+    connect_args={"statement_cache_size": 0},
 )
 
 AsyncSessionFactory = async_sessionmaker(

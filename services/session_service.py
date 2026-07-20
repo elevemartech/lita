@@ -8,8 +8,7 @@ Usam db.flush() para obter IDs gerados sem encerrar a transação.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -72,7 +71,7 @@ class SessionService:
 
         if session.status == "paused":
             session.status = "active"
-            session.last_activity_at = datetime.now(timezone.utc)
+            session.last_activity_at = datetime.now(UTC)
 
             # Reconstrói Redis se o contexto tiver expirado
             context = await memory.get_context(session_id)
@@ -106,8 +105,8 @@ class SessionService:
         session: ManagerSession,
         role: str,
         content: str,
-        tool_calls: Optional[dict] = None,
-        metadata: Optional[dict] = None,
+        tool_calls: dict | None = None,
+        metadata: dict | None = None,
     ) -> ManagerMessage:
         """Persiste mensagem e atualiza contadores da sessão."""
         msg = ManagerMessage(
@@ -120,7 +119,7 @@ class SessionService:
         )
         db.add(msg)
         session.message_count += 1
-        session.last_activity_at = datetime.now(timezone.utc)
+        session.last_activity_at = datetime.now(UTC)
         await db.flush()
         return msg
 
@@ -144,7 +143,7 @@ class SessionService:
         """Encerra a sessão e remove o contexto Redis."""
         session.status = "completed"
         session.summary = summary
-        session.ended_at = datetime.now(timezone.utc)
+        session.ended_at = datetime.now(UTC)
         await memory.clear_context(str(session.id))
         logger.info("session.closed", session_id=str(session.id))
 

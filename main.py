@@ -15,8 +15,9 @@ Endpoints:
 """
 from __future__ import annotations
 
-import structlog
 from contextlib import asynccontextmanager
+
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

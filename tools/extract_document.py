@@ -10,12 +10,13 @@ Campos ausentes ou ilegíveis recebem score 0.0 e entram nas flags.
 from __future__ import annotations
 
 import json
+
 import structlog
 from langchain_core.tools import tool
 from openai import AsyncOpenAI
 
-from schemas.doc_types import get_doc_type
 from core.settings import settings
+from schemas.doc_types import get_doc_type
 
 logger = structlog.get_logger(__name__)
 
@@ -121,7 +122,9 @@ async def extract_document(
                 elif conf < 0.5:
                     flags.append(f"BAIXA_CONFIANCA:{field}")
 
-        avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+        avg_confidence = (
+            sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
+        )
 
         logger.info(
             "extract_document.ok",

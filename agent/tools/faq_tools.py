@@ -205,7 +205,8 @@ async def build_faq_plan(
         '      "id": "act_1",\n'
         '      "type": "edit",\n'
         '      "faq_id": 93,\n'
-        '      "before": {"category": "General", "question": "texto original", "answer": "resposta original"},\n'
+        '      "before": {"category": "General", "question": "texto original", '
+        '"answer": "resposta original"},\n'
         '      "after": {"category": "Admission"},\n'
         '      "reason": "Justificativa em PT-BR (1 frase)",\n'
         '      "approved": true,\n'
@@ -216,7 +217,8 @@ async def build_faq_plan(
         '      "type": "create",\n'
         '      "faq_id": null,\n'
         '      "before": null,\n'
-        '      "after": {"question": "Nova pergunta?", "answer": "Nova resposta.", "category": "Pricing"},\n'
+        '      "after": {"question": "Nova pergunta?", "answer": "Nova resposta.", '
+        '"category": "Pricing"},\n'
         '      "reason": "Justificativa em PT-BR (1 frase)",\n'
         '      "approved": true,\n'
         '      "status": "pending"\n'
@@ -234,11 +236,14 @@ async def build_faq_plan(
         "- Para 'stale': sugere edit na resposta se for possível melhorá-la\n"
         "- Nunca inventes dados factuais (valores, datas, nomes)\n"
         "- Nunca uses markdown no JSON\n"
-        "- `before` e `after` são SEMPRE objectos JSON com campos (question, answer, category, status) — NUNCA strings simples\n"
+        "- `before` e `after` são SEMPRE objectos JSON com campos "
+        "(question, answer, category, status) — NUNCA strings simples\n"
         "- Para `deactivate`: `after` deve ser {\"status\": \"inactive\"}\n"
-        "- Para `edit` de categoria: `before` deve ter pelo menos {\"category\": \"categoria_actual\"}\n"
+        "- Para `edit` de categoria: `before` deve ter pelo menos "
+        "{\"category\": \"categoria_actual\"}\n"
         "- Para `create`: `before` deve ser null (não uma string)\n"
-        "- Para `edit`: `after` deve conter APENAS os campos que precisam mudar — não copiar campos inalterados do before\n"
+        "- Para `edit`: `after` deve conter APENAS os campos que precisam mudar "
+        "— não copiar campos inalterados do before\n"
     )
 
     try:
@@ -338,7 +343,7 @@ async def execute_faq_plan(
                 if action_type == "create":
                     payload = {**after, "school": school_id}
                     payload = {k: v for k, v in payload.items() if v is not None and v != ""}
-                    result = await client.post("/api/v1/faqs/", json=payload)
+                    await client.post("/api/v1/faqs/", json=payload)
                 elif action_type in ("edit", "deactivate"):
                     before = action.get("before") or {}
                     diff = {k: v for k, v in after.items() if before.get(k) != v}
@@ -347,7 +352,7 @@ async def execute_faq_plan(
                             action_id=action_id, status="done"
                         ))
                         continue
-                    result = await client.patch(f"/api/v1/faqs/{faq_id}/", json=diff)
+                    await client.patch(f"/api/v1/faqs/{faq_id}/", json=diff)
                 else:
                     results.append(FaqExecuteActionResult(
                         action_id=action_id,

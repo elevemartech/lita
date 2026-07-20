@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from schemas.faq_schemas import FaqAnalysisResult, FaqIssue, FaqItem
 
@@ -195,13 +195,13 @@ class FaqAnalyzer:
     def check_stale(self, faqs: list[FaqItem]) -> list[FaqIssue]:
         """FAQs com updated_at > STALE_DAYS dias atrás."""
         issues = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for faq in faqs:
             if faq.updated_at is None:
                 continue
             updated = faq.updated_at
             if updated.tzinfo is None:
-                updated = updated.replace(tzinfo=timezone.utc)
+                updated = updated.replace(tzinfo=UTC)
             days_old = (now - updated).days
             if days_old > self.STALE_DAYS:
                 issues.append(FaqIssue(

@@ -8,7 +8,6 @@ Convenção de nome: {school_id}_{uuid4}.{ext}
 """
 from __future__ import annotations
 
-import asyncio
 import os
 import time
 import uuid
@@ -52,7 +51,9 @@ def save_file(school_id: str, content: bytes, extension: str) -> str:
     expires_at = time.time() + settings.file_storage_ttl
     _registry[file_id] = (str(path), expires_at)
 
-    logger.info("file_storage.saved", file_id=file_id, path=str(path), ttl=settings.file_storage_ttl)
+    logger.info(
+        "file_storage.saved", file_id=file_id, path=str(path), ttl=settings.file_storage_ttl
+    )
     return file_id
 
 

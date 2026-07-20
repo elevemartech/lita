@@ -6,6 +6,7 @@ Campos do doc_reader e do report_agent coexistem no mesmo tipo —
 cada agente usa apenas os campos relevantes ao seu fluxo.
 """
 from __future__ import annotations
+
 from typing import TypedDict
 
 

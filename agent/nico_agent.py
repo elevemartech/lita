@@ -47,7 +47,8 @@ def _build_system_prompt(user_name: str, role: str) -> str:
         "- Perguntas sobre gestão escolar em linguagem natural\n"
         "- Interpretação de dados e indicadores da escola\n"
         "- Gestão inteligente de FAQs da escola (analisar, organizar, criar, auditar)\n\n"
-        "Para FAQs, use as ferramentas: analyze_faqs → build_faq_plan → (aguardar aprovação) → execute_faq_plan\n"
+        "Para FAQs, use as ferramentas: analyze_faqs → build_faq_plan → "
+        "(aguardar aprovação) → execute_faq_plan\n"
         "NUNCA execute_faq_plan sem confirmação explícita do gestor.\n\n"
         "Regras:\n"
         f"- Seja objetivo e profissional. Chame o gestor pelo nome ({user_name}).\n"
@@ -56,7 +57,8 @@ def _build_system_prompt(user_name: str, role: str) -> str:
         "- Se não souber responder, diga claramente.\n"
         "- Responda sempre em português brasileiro.\n"
         "- Para FAQs: sempre mostre o plano ANTES de executar. Nunca execute sem aprovação.\n"
-        "- Se uma ferramenta retornar erro, informe o gestor claramente e NÃO tente chamar a ferramenta novamente.\n"
+        "- Se uma ferramenta retornar erro, informe o gestor claramente "
+        "e NÃO tente chamar a ferramenta novamente.\n"
     )
 
 
@@ -296,7 +298,10 @@ async def tool_node(state: NicoState) -> NicoState:
                 "messages": messages,
                 "tool_calls": [],
                 "tool_error_counts": {},
-                "response": "Não consegui acessar as informações necessárias no momento. Tente novamente em alguns instantes.",
+                "response": (
+                    "Não consegui acessar as informações necessárias no momento. "
+                    "Tente novamente em alguns instantes."
+                ),
                 "error": f"circuit_breaker:{name}",
             }
 
