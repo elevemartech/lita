@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -16,7 +18,10 @@ class Settings(BaseSettings):
     file_storage_ttl: int = 900
     file_storage_dir: str = "/tmp"
     environment: str = "development"
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
 
     @field_validator("cors_origins", mode="before")
     @classmethod
