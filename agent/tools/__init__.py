@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 
 from agent.tools.faq_tools import analyze_faqs, build_faq_plan, execute_faq_plan, list_faqs
 from agent.tools.get_school_summary import get_school_summary
+from agent.tools.kb_tools import search_faqs_semantic, search_knowledge_base
 
 # Importa as tools existentes — NÃO modifica seus módulos
 from tools.generate_docx import generate_docx as _generate_docx
@@ -156,4 +157,6 @@ TOOLS_REGISTRY = [
     build_faq_plan,
     execute_faq_plan,
     get_school_summary,
+    search_knowledge_base,
+    search_faqs_semantic,
 ]

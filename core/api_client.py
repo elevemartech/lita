@@ -70,3 +70,19 @@ class DjangoAPIClient:
         resp = await self._client.patch(path, json=json, **kwargs)
         resp.raise_for_status()
         return resp.json()
+
+    async def post_multipart(
+        self,
+        path: str,
+        files: dict,
+        data: dict | list[tuple[str, str]] | None = None,
+        **kwargs,
+    ) -> dict:
+        """
+        POST multipart/form-data. `data` aceita dict OU lista de tuplas —
+        use lista de tuplas para campos repetidos (ex: várias tags),
+        já que um dict só guarda um valor por chave.
+        """
+        resp = await self._client.post(path, files=files, data=data or [], **kwargs)
+        resp.raise_for_status()
+        return resp.json()

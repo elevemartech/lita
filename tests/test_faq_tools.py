@@ -22,7 +22,7 @@ def make_faq(**kwargs) -> FaqItem:
         "id": 1,
         "question": "Qual o horário de funcionamento?",
         "answer": "Funcionamos de segunda a sexta das 7h às 17h.",
-        "category": "Vida Escolar",
+        "category": "Schedule",
         "status": "active",
         "updated_at": datetime.now(UTC),
     }
@@ -38,19 +38,19 @@ def clean_faqs() -> list[FaqItem]:
             id=1,
             question="Qual o horário de entrada?",
             answer="O portão abre às 7h da manhã para os alunos.",
-            category="Vida Escolar",
+            category="Schedule",
         ),
         make_faq(
             id=2,
             question="Como faço a matrícula?",
             answer="Entre em contato com a secretaria para iniciar o processo.",
-            category="Matrículas",
+            category="Admission",
         ),
         make_faq(
             id=3,
             question="Quando vence o boleto?",
             answer="Os boletos vencem todo dia 10 do mês corrente.",
-            category="Financeiro",
+            category="Pricing",
         ),
     ]
 
@@ -139,12 +139,12 @@ def test_stale_not_triggered_when_updated_at_none():
 
 
 def test_wrong_category_detected():
-    """FAQ sobre mensalidade e boleto em 'Vida Escolar' deve gerar wrong_category."""
+    """FAQ sobre mensalidade e boleto em 'Schedule' deve gerar wrong_category."""
     faqs = [
         make_faq(
             id=1,
             question="Qual o valor da mensalidade e como pago o boleto?",
-            category="Vida Escolar",
+            category="Schedule",
         )
     ]
     result = FaqAnalyzer().analyze(faqs)
@@ -157,14 +157,14 @@ def test_wrong_category_detected():
 def test_coverage_gap_detected():
     """Categorias sem nenhuma FAQ activa devem aparecer em coverage_gaps."""
     faqs = [
-        make_faq(id=1, category="Vida Escolar"),
-        make_faq(id=2, category="Financeiro"),
+        make_faq(id=1, category="Schedule"),
+        make_faq(id=2, category="Pricing"),
     ]
     result = FaqAnalyzer().analyze(faqs)
-    assert "Matrículas" in result.coverage_gaps
-    assert "Transporte" in result.coverage_gaps
-    assert "Vida Escolar" not in result.coverage_gaps
-    assert "Financeiro" not in result.coverage_gaps
+    assert "Admission" in result.coverage_gaps
+    assert "Transport" in result.coverage_gaps
+    assert "Schedule" not in result.coverage_gaps
+    assert "Pricing" not in result.coverage_gaps
 
 
 def test_no_coverage_gap_when_all_categories_covered():
@@ -194,7 +194,7 @@ async def test_list_faqs_success():
                 "id": 1,
                 "question": "Pergunta 1",
                 "answer": "Resposta 1",
-                "category": "Financeiro",
+                "category": "Pricing",
                 "status": "active",
             }
         ],

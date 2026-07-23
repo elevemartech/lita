@@ -44,11 +44,12 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    session_id: str
-    reply:      str
-    file_id:    str | None = None
-    file_url:   str | None = None
-    faq_plan:   dict | None = None
+    session_id:      str
+    reply:           str
+    file_id:         str | None = None
+    file_url:        str | None = None
+    faq_plan:        dict | None = None
+    doc_suggestion:  dict | None = None
 
 
 class BriefingResponse(BaseModel):

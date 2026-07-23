@@ -18,6 +18,7 @@ Sessões com status "completed" são rejeitadas com 400.
 """
 from __future__ import annotations
 
+import base64
 import json
 
 import structlog
@@ -29,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agent.nico_agent import nico_graph
 from agent.state import NicoState
 from core import memory
+from core.api_client import DjangoAPIClient
 from core.auth import CurrentUser, get_current_user
 from core.database import get_session
 from core.settings import settings
@@ -273,3 +275,111 @@ async def get_faq_plan(
         )
 
     return _FaqPlan(**stored["plan"])
+
+
+# ── Base de Conhecimento — confirmação de upload ──────────────────────────────
+
+from routers.upload import _KB_UPLOAD_PREFIX  # noqa: E402
+from schemas.kb_schemas import KbConfirmRequest, KbConfirmResponse  # noqa: E402
+
+
+@router.post("/kb/confirm", response_model=KbConfirmResponse)
+async def confirm_kb_upload_endpoint(
+    body: KbConfirmRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Confirma a persistência de um arquivo classificado pela Lita como
+    conhecimento interno (knowledge_base) ou documento para responsáveis
+    (parent_document).
+
+    Recupera os bytes originais do staging no Redis (criado em POST
+    /chat/upload, TTL 15min), confere isolamento por escola e persiste na
+    eleve-api. Requer sessão ativa (status=active).
+    """
+    try:
+        session = await SessionService.get_or_resume(db, body.session_id, user.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    if session.status == "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="Sessão encerrada. Crie uma nova sessão para continuar.",
+        )
+
+    r = _FaqRedis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        raw = await r.get(f"{_KB_UPLOAD_PREFIX}:{body.upload_id}")
+        if raw:
+            await r.delete(f"{_KB_UPLOAD_PREFIX}:{body.upload_id}")
+    finally:
+        await r.aclose()
+
+    if not raw:
+        raise HTTPException(
+            status_code=404,
+            detail="Upload não encontrado ou expirado. Envie o arquivo novamente.",
+        )
+
+    staged = json.loads(raw)
+    if staged.get("school_id") != user.school_id:
+        raise HTTPException(status_code=403, detail="Sem permissão para confirmar este upload.")
+
+    if staged.get("bucket") != body.bucket:
+        raise HTTPException(status_code=400, detail="Balde não corresponde ao upload original.")
+
+    file_bytes = base64.b64decode(staged["file_b64"])
+    filename = body.name or staged["filename"]
+    suggested = staged.get("suggested", {})
+
+    upload_path = (
+        "/api/v1/knowledge-base/files/upload/"
+        if body.bucket == "knowledge_base"
+        else "/api/v1/knowledge-base/parent-docs/upload/"
+    )
+
+    form_fields: list[tuple[str, str]] = [
+        ("category", body.category),
+        ("name", filename),
+        ("description", body.description if body.description is not None else suggested.get("description", "")),
+    ]
+    if body.bucket == "knowledge_base":
+        for tag in (body.tags if body.tags is not None else suggested.get("tags", [])):
+            form_fields.append(("tags", tag))
+    else:
+        for phrase in (body.trigger_phrases if body.trigger_phrases is not None else suggested.get("trigger_phrases", [])):
+            form_fields.append(("trigger_phrases", phrase))
+        for audience in (body.audiences if body.audiences is not None else suggested.get("audiences", [])):
+            form_fields.append(("audiences", audience))
+
+    try:
+        async with DjangoAPIClient(token=user.sa_token) as client:
+            result = await client.post_multipart(
+                upload_path,
+                files={"file": (filename, file_bytes, staged.get("mime_type", "application/octet-stream"))},
+                data=form_fields,
+            )
+    except Exception as exc:
+        logger.error("kb.confirm.upload_error", bucket=body.bucket, upload_id=body.upload_id, error=str(exc))
+        return KbConfirmResponse(
+            status="error",
+            bucket=body.bucket,
+            message=f"Falha ao salvar o documento: {exc}",
+        )
+
+    logger.info(
+        "kb.confirm.ok",
+        bucket=body.bucket,
+        upload_id=body.upload_id,
+        result_id=result.get("id"),
+        user_id=user.user_id,
+    )
+
+    return KbConfirmResponse(
+        status="done",
+        id=result.get("id"),
+        bucket=body.bucket,
+        message="Documento salvo com sucesso.",
+    )

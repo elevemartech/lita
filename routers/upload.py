@@ -18,16 +18,21 @@ Pipeline:
   3. Rejeita se session.status == "completed" com 400
   4. Valida tipo MIME (415) e tamanho (413)
   5. Extrai conteúdo do arquivo
-  6. Detecta categoria por nome do arquivo
-  7. Monta user_text enriquecido
-  8. Carrega contexto Redis via memory.get_context
-  9. Monta NicoState e invoca nico_graph
- 10. Extrai resposta do assistant
- 11. Persiste via SessionService.add_message (user e assistant)
- 12. await db.commit()
- 13. Atualiza Redis via memory.append_turn
- 14. Extrai file_id de tool results
- 15. Retorna ChatResponse
+  6. Classifica o balde de destino (knowledge_base | parent_document |
+     transactional | none) via _classify_document_bucket
+  7. Se knowledge_base/parent_document: consulta o endpoint /extract
+     correspondente na eleve-api, guarda os bytes originais em staging
+     (Redis, TTL 15min) e monta doc_suggestion — persistência real só
+     acontece após confirmação via POST /chat/kb/confirm
+  8. Monta user_text enriquecido
+  9. Carrega contexto Redis via memory.get_context
+ 10. Monta NicoState e invoca nico_graph
+ 11. Extrai resposta do assistant
+ 12. Persiste via SessionService.add_message (user e assistant)
+ 13. await db.commit()
+ 14. Atualiza Redis via memory.append_turn
+ 15. Extrai file_id de tool results
+ 16. Retorna ChatResponse (com doc_suggestion quando aplicável)
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ import base64
 import csv
 import io
 import json
+import uuid
 
 import docx
 import openpyxl
@@ -42,14 +48,17 @@ import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.nico_agent import nico_graph
 from agent.state import NicoState
 from core import memory
+from core.api_client import DjangoAPIClient
 from core.auth import CurrentUser, get_current_user
 from core.database import get_session
 from core.settings import settings
+from schemas.kb_schemas import DocSuggestion
 from schemas.session_types import ChatResponse
 from services.session_service import SessionService
 
@@ -58,6 +67,22 @@ logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+# ── Staging de upload pendente de confirmação (knowledge_base / parent_document) ──
+# Os bytes originais ficam aqui — nunca entram no loop do LLM.
+_KB_UPLOAD_PREFIX = "nicodemus:kb_upload"
+_KB_UPLOAD_TTL = 900  # 15 minutos — mesmo padrão de FILE_STORAGE_TTL
+
+# Categorias reais dos models KnowledgeBaseFile/ParentDocument na eleve-api
+# (apps/knowledge_base/models.py — KB_CATEGORY_CHOICES / PARENT_DOC_CATEGORY)
+_KB_CATEGORIES = [
+    "regimento", "calendario", "pedagogico", "financeiro", "matriculas",
+    "comunicados", "cardapio", "politicas", "faq", "outros",
+]
+_PARENT_DOC_CATEGORIES = [
+    "material", "manual", "contrato", "formulario", "autorizacao",
+    "comunicado", "financeiro", "calendario", "cardapio", "outros",
+]
 
 _SUPPORTED_TYPES: dict[str, str] = {
     "application/pdf":                                                          "pdf",
@@ -70,14 +95,6 @@ _SUPPORTED_TYPES: dict[str, str] = {
     "text/plain":                                                               "txt",
 }
 
-_CATEGORY_RULES: list[tuple[list[str], str]] = [
-    (["calend", "letivo"],   "calendario_escolar"),
-    (["nota", "boletim"],    "notas_alunos"),
-    (["cardap", "merenda"],  "cardapio"),
-    (["frequen", "falta"],   "frequencia"),
-    (["comunic", "aviso"],   "comunicado"),
-]
-
 _vision_llm = ChatOpenAI(
     model="gpt-4o",
     api_key=settings.openai_api_key,
@@ -85,16 +102,58 @@ _vision_llm = ChatOpenAI(
     max_tokens=2048,
 )
 
+_classify_llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    api_key=settings.openai_api_key,
+    temperature=0,
+)
+
 
 # ── helpers ────────────────────────────────────────────────────────────────────────────────
 
-def _detect_category(filename: str) -> str:
-    """Detecta categoria do documento por heurística simples de nome de arquivo."""
-    lower = filename.lower()
-    for keywords, category in _CATEGORY_RULES:
-        if any(kw in lower for kw in keywords):
-            return category
-    return "documento_geral"
+def _get_redis() -> Redis:
+    return Redis.from_url(settings.redis_url, decode_responses=True)
+
+
+async def _classify_document_bucket(text: str, filename: str) -> dict:
+    """
+    Classifica o arquivo enviado no chat em um dos baldes de destino:
+
+    knowledge_base  → conhecimento interno, indexado via RAG (regimento, calendário,
+                       políticas, cardápio, comunicados internos...) — nunca enviado
+                       ao responsável.
+    parent_document → documento que a escola ENVIA aos responsáveis, como está
+                       (lista de material, contrato, comunicado, autorização...).
+    transactional   → comprovante de pagamento, contrato de matrícula ou boletim —
+                       já tem fluxo próprio de leitura (/doc/extract), não deve ser
+                       persistido por aqui.
+    none            → não se encaixa em nenhum dos anteriores.
+    """
+    prompt = (
+        "Classifique o documento a seguir em UM dos baldes abaixo. Responda APENAS "
+        'com um JSON: {"bucket": "...", "category": "...", "reason": "frase curta em PT-BR"}\n\n'
+        "Baldes:\n"
+        "- knowledge_base: conhecimento interno da escola, usado como contexto para "
+        f"responder perguntas (category deve ser um destes: {', '.join(_KB_CATEGORIES)})\n"
+        "- parent_document: documento que a escola ENVIA aos responsáveis, sem análise "
+        f"(category deve ser um destes: {', '.join(_PARENT_DOC_CATEGORIES)})\n"
+        "- transactional: comprovante de pagamento, contrato de matrícula ou boletim "
+        "de um aluno específico — já tem fluxo próprio, não deve ser salvo aqui "
+        '(category: "")\n'
+        '- none: não se encaixa em nenhum dos anteriores (category: "")\n\n'
+        f"Nome do arquivo: {filename}\n\n"
+        f"Conteúdo (trecho):\n{text[:3000]}\n\n"
+        "Responda só o JSON, sem markdown."
+    )
+    try:
+        response = await _classify_llm.ainvoke([HumanMessage(content=prompt)])
+        result = json.loads(response.content.strip())
+        if result.get("bucket") not in ("knowledge_base", "parent_document", "transactional", "none"):
+            return {"bucket": "none", "category": "", "reason": ""}
+        return result
+    except Exception as exc:
+        logger.warning("upload.classify_error", filename=filename, error=str(exc))
+        return {"bucket": "none", "category": "", "reason": ""}
 
 
 def _extract_file_id(messages: list[dict]) -> str | None:
@@ -263,19 +322,106 @@ async def upload_file(
             detail=f"Não foi possível extrair o conteúdo do arquivo: {exc}",
         )
 
-    # ── Categoria e prompt enriquecido ──────────────────────────────────────────
-    category = _detect_category(filename)
+    # ── Classificação do balde de destino ────────────────────────────────────────
+    classification = await _classify_document_bucket(extracted, filename)
+    bucket = classification.get("bucket", "none")
+    category = classification.get("category", "")
+    reason = classification.get("reason", "")
     msg_text = message.strip()
 
+    doc_suggestion: dict | None = None
+
+    if bucket in ("knowledge_base", "parent_document"):
+        extract_path = (
+            "/api/v1/knowledge-base/files/extract/"
+            if bucket == "knowledge_base"
+            else "/api/v1/knowledge-base/parent-docs/extract/"
+        )
+        extract_result: dict = {}
+        try:
+            async with DjangoAPIClient(token=user.sa_token) as client:
+                extract_result = await client.post_multipart(
+                    extract_path,
+                    files={"file": (filename, content, mime_type)},
+                )
+        except Exception as exc:
+            logger.error(
+                "upload.kb_extract_error", bucket=bucket, filename=filename, error=str(exc)
+            )
+
+        upload_id = str(uuid.uuid4())
+        suggestion = DocSuggestion(
+            upload_id=upload_id,
+            bucket=bucket,
+            filename=filename,
+            suggested_name=extract_result.get("suggested_name") or filename,
+            suggested_category=extract_result.get("suggested_category") or category or "outros",
+            description=(extract_result.get("description") or extract_result.get("summary") or "")[:300],
+            tags=extract_result.get("suggested_tags", []),
+            trigger_phrases=extract_result.get("suggested_trigger_phrases", []),
+            audiences=extract_result.get("suggested_audiences", []),
+            reason=reason,
+        )
+        doc_suggestion = suggestion.model_dump()
+
+        # Staging dos bytes originais — nunca entram no loop do LLM.
+        staged_payload = json.dumps({
+            "school_id": user.school_id,
+            "bucket": bucket,
+            "filename": filename,
+            "mime_type": mime_type,
+            "file_b64": base64.b64encode(content).decode("utf-8"),
+            "suggested": doc_suggestion,
+        })
+        r = _get_redis()
+        try:
+            await r.set(f"{_KB_UPLOAD_PREFIX}:{upload_id}", staged_payload, ex=_KB_UPLOAD_TTL)
+        finally:
+            await r.aclose()
+
+        logger.info(
+            "upload.kb_staged",
+            upload_id=upload_id,
+            bucket=bucket,
+            category=doc_suggestion["suggested_category"],
+        )
+
+    # ── Prompt enriquecido ────────────────────────────────────────────────────────
     prompt_lines = [
         f"[ARQUIVO ENVIADO: {filename}]",
-        f"[CATEGORIA DETECTADA: {category}]",
         "Conteúdo extraído:",
         extracted,
     ]
+
+    if bucket == "knowledge_base":
+        prompt_lines.append(
+            "\n[SUGESTÃO DA LITA] Este arquivo parece ser conhecimento interno da escola "
+            f"(categoria sugerida: {doc_suggestion['suggested_category']}). "
+            f"Nome sugerido: \"{doc_suggestion['suggested_name']}\". "
+            "Apresente essa sugestão ao gestor e explique que, se ele confirmar, o "
+            "arquivo será salvo na base de conhecimento (indexado para busca semântica) "
+            "via POST /chat/kb/confirm — nunca é enviado diretamente aos responsáveis."
+        )
+    elif bucket == "parent_document":
+        prompt_lines.append(
+            "\n[SUGESTÃO DA LITA] Este arquivo parece ser um documento para enviar aos "
+            f"responsáveis (categoria sugerida: {doc_suggestion['suggested_category']}). "
+            f"Nome sugerido: \"{doc_suggestion['suggested_name']}\". "
+            "Apresente essa sugestão ao gestor e explique que, se ele confirmar, o "
+            "documento fica disponível para envio automático aos responsáveis via "
+            "POST /chat/kb/confirm."
+        )
+    elif bucket == "transactional":
+        prompt_lines.append(
+            "\n[SUGESTÃO DA LITA] Este arquivo parece ser um comprovante de pagamento, "
+            "contrato de matrícula ou boletim de um aluno específico. Oriente o gestor "
+            "a usar a tela de leitura de documentos (upload → extração → confirmação) "
+            "já existente no painel para registrar isso, em vez de tratar por aqui."
+        )
+
     if msg_text:
         prompt_lines.append(f"\nMensagem do gestor: {msg_text}")
-    else:
+    elif bucket == "none":
         prompt_lines.append(
             "\nAnalise o conteúdo acima, explique o que encontrou e sugira "
             "próximas ações possíveis para a gestão escolar."
@@ -292,6 +438,7 @@ async def upload_file(
         "upload.invoke",
         session_id=session_id,
         user_id=user.user_id,
+        bucket=bucket,
         category=category,
         msg_count=len(messages_for_agent),
     )
@@ -349,8 +496,10 @@ async def upload_file(
         "upload.ok",
         session_id=session_id,
         user_id=user.user_id,
+        bucket=bucket,
         category=category,
         has_file=file_id is not None,
+        has_doc_suggestion=doc_suggestion is not None,
     )
 
     return ChatResponse(
@@ -358,4 +507,5 @@ async def upload_file(
         reply=reply,
         file_id=file_id,
         file_url=file_url,
+        doc_suggestion=doc_suggestion,
     )

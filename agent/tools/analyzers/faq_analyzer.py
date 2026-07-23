@@ -15,36 +15,40 @@ from schemas.faq_schemas import FaqAnalysisResult, FaqIssue, FaqItem
 class FaqAnalyzer:
     """Análise determinística de FAQs — sem LLM, sem APIs externas."""
 
+    # Categorias reais de FAQ.CATEGORY_CHOICES na eleve-api (apps/faqs/models.py) —
+    # EN, não PT-BR. Ver também _VALID_CATEGORIES em agent/tools/faq_tools.py.
     VALID_CATEGORIES = [
-        "Financeiro",
-        "Matrículas",
-        "Vida Escolar",
-        "Tecnologia",
-        "Alimentação & Cantina",
-        "Transporte",
-        "Professores",
-        "Biblioteca",
-        "Eventos & Calendário",
-        "Outros",
+        "Admission",
+        "Pricing",
+        "Uniform",
+        "Schedule",
+        "Documentation",
+        "Activities",
+        "Meals",
+        "Transport",
+        "Pedagogical",
+        "General",
     ]
 
+    # Chaves em EN (batem com VALID_CATEGORIES / dados reais), keywords em
+    # PT-BR (as perguntas das FAQs são em português).
     CATEGORY_KEYWORDS: dict[str, list[str]] = {
-        "Financeiro": [
+        "Pricing": [
             "mensalidade", "boleto", "pagamento", "valor", "taxa",
             "anuidade", "desconto", "multa",
         ],
-        "Matrículas": [
+        "Admission": [
             "matrícula", "rematrícula", "documentos", "transferência", "vaga", "enroll",
         ],
-        "Vida Escolar": [
-            "horário", "portão", "uniforme", "farda", "recreio",
+        "Schedule": [
+            "horário", "portão", "recreio",
             "entrada", "saída", "turno",
         ],
-        "Alimentação & Cantina": [
+        "Uniform": ["uniforme", "farda"],
+        "Meals": [
             "cantina", "lanche", "almoço", "cardápio", "comida", "alimentação",
         ],
-        "Transporte": ["transporte", "van", "ônibus", "condução"],
-        "Biblioteca": ["livro", "biblioteca", "empréstimo", "devolução"],
+        "Transport": ["transporte", "van", "ônibus", "condução"],
     }
 
     STALE_DAYS = 90
