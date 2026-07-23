@@ -317,6 +317,12 @@ TOOLS_REGISTRY (agent/tools/__init__.py):
   - analyze_faqs                (análise determinística via FaqAnalyzer)
   - build_faq_plan              (gera plano via gpt-4o-mini)
   - execute_faq_plan            (executa acções aprovadas na eleve-api)
+  - search_knowledge_base       (RAG sobre documentos internos indexados)
+  - search_faqs_semantic        (busca semântica nas FAQs)
+  - list_calendar_events        (lê/filtra eventos do calendário escolar)
+  - create_calendar_event       (cria evento — requer confirmação do gestor)
+  - update_calendar_event       (edita evento — requer confirmação do gestor)
+  - delete_calendar_event       (exclui evento — requer confirmação do gestor)
 ```
 
 ### SessionService (services/session_service.py)
@@ -427,6 +433,34 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
 
 ---
 
+## 14b. Módulo Calendário Escolar
+
+Calendário interno da escola (feriado, prova, formatura, evento cultural) —
+**não confundir** com a conexão OAuth do Google Calendar da eleve-api (usada
+só para agendar visitas via WhatsApp, gerida pelo eleve-agent).
+
+### Backend (eleve-api)
+- `apps/events/models.py` — `CalendarEvent` (school, título, tipo, start_date/end_date, `google_event_id`)
+- `apps/events/views.py` — `CalendarEventViewSet`, CRUD completo em `/api/v1/events/`, isolado por escola (`SchoolIsolationMixin`)
+- `apps/schools/services/calendar.py` — `get_calendar_service(school)`, helper único pra montar o client autenticado da Google Calendar API (oauth ou service_account)
+- `apps/events/services.py` — `sync_event_upsert`/`sync_event_delete`: espelham cada create/update/delete no Google Calendar da escola em **melhor esforço** (nunca bloqueiam a resposta, só logam falha)
+
+### Frontend (Sophia)
+- `src/app/services/eventsService.ts` — client REST de `/api/v1/events/`
+- `src/app/pages/CalendarioEscolar.tsx` — grid mensal + lista + modal de criar/editar, rota `/calendario`, item "Calendário" no `NavigationSidebar.tsx`
+
+### Ficheiros (lita)
+- `schemas/calendar_schemas.py` — `CalendarEventItem`, `CalendarEventType`
+- `agent/tools/calendar_tools.py` — 4 ferramentas: `list_calendar_events`, `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
+
+### Regras de negócio
+- Isolamento por escola é automático via `sa_token`/`SchoolIsolationMixin` — não filtrar manualmente por `school_id` nas leituras
+- `create_calendar_event` é a exceção: o serializer exige `"school": school_id` no payload
+- `create`/`update`/`delete` **NUNCA** correm sem confirmação explícita do gestor no chat — mesma regra do módulo FAQ, reforçada no system prompt do `nico_agent.py`
+- O sync com o Google Calendar acontece só no backend (eleve-api); as tools do Nicodemus não sabem disso nem precisam saber
+
+---
+
 ## 15. Histórico de features
 
 - **ELE-203 ✅** — GET /sessions/summary/ criado em `routers/sessions.py`;
@@ -504,3 +538,20 @@ nicodemus:faq_plan:{plan_id}      → plano gerado (TTL 30 min)
   mudaram são enviados no PATCH; se diff vazio, acção marcada `done` sem chamar a API;
   os dois ramos `edit` e `deactivate` foram unificados num único `elif action_type in ("edit", "deactivate")`.
   Regra adicionada ao prompt de `build_faq_plan`: `after` de `edit` deve conter APENAS campos alterados.
+
+- **ELE-222 ✅** — Módulo Calendário Escolar criado, ponta a ponta (ver seção 14b).
+  Backend (eleve-api): campo `google_event_id` em `CalendarEvent` (migration
+  `0002_calendarevent_google_event_id`), helper `apps/schools/services/calendar.py`
+  (`get_calendar_service`) e sync best-effort com o Google Calendar em
+  `apps/events/services.py` (`sync_event_upsert`/`sync_event_delete`), acionado em
+  `CalendarEventViewSet.perform_create/update/destroy`. Frontend (Sophia): página
+  `CalendarioEscolar.tsx` (grid mensal + lista + CRUD) em `/calendario`,
+  `eventsService.ts`, item no `NavigationSidebar.tsx` — página inexistente até então,
+  apesar do backend `/api/v1/events/` já estar pronto havia tempo. Nicodemus: 4 tools
+  novas em `agent/tools/calendar_tools.py` (list/create/update/delete_calendar_event),
+  `DjangoAPIClient.delete` adicionado (`core/api_client.py`), gatilhos e regra de
+  confirmação humana no system prompt (`agent/nico_agent.py`) — mesma exigência do
+  módulo FAQ: nunca criar/editar/excluir sem aprovação explícita do gestor no chat.
+  **Nota:** a migration do eleve-api foi escrita à mão (sem ambiente Django disponível
+  para rodar `makemigrations`) — validar com `python manage.py makemigrations --check`
+  antes de aplicar em produção.

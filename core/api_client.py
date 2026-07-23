@@ -71,6 +71,10 @@ class DjangoAPIClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def delete(self, path: str, **kwargs) -> None:
+        resp = await self._client.delete(path, **kwargs)
+        resp.raise_for_status()
+
     async def post_multipart(
         self,
         path: str,
